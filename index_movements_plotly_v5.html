@@ -1,0 +1,504 @@
+
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Index Movements — Plotly (v5)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-2.34.0.min.js"></script>
+  <style>
+    .soft-card { box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+    .seg { display:inline-flex; border-radius:12px; overflow:hidden; border:1px solid #e5e7eb; }
+    .seg button { padding:6px 10px; font-size:12px; }
+    .seg .active { background:#111827; color:white; }
+    .btn { padding:6px 10px; border-radius: 10px; font-size: 12px; }
+    .ctrl { display:flex; align-items:center; gap:.5rem; }
+    .chip { display:inline-flex; align-items:center; gap:.4rem; background:#EEF2FF; color:#3730A3; border-radius:999px; padding:.2rem .6rem; margin:.15rem; }
+    .chip button { background:transparent; border:none; cursor:pointer; font-size:12px; color:#111827; }
+    .table-min td, .table-min th { padding:.35rem .5rem; }
+  </style>
+</head>
+<body class="h-full bg-gray-50 text-gray-900">
+  <div class="max-w-7xl mx-auto p-4 md:p-8">
+    <header class="mb-6 flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Index Movements — Plotly (v5)</h1>
+        <p class="text-sm text-gray-600">Line is default. Enable Risk–Return scatter to see trendline, R², and efficient frontier. Click bars/points to pin for compare.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="seg" role="tablist" aria-label="View mode">
+          <button id="rawBtn" class="active" role="tab" aria-selected="true">Raw</button>
+          <button id="stdBtn" role="tab" aria-selected="false">Standardized</button>
+        </div>
+        <button id="clearSel" class="btn border border-gray-300">Clear Selection</button>
+      </div>
+    </header>
+
+    <!-- Global Controls -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-6">
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <label class="block text-xs text-gray-600 mb-1">Main Metric</label>
+        <select id="metricSelect" class="w-full rounded-xl border-gray-200">
+          <option value="yoy">YoY %</option>
+          <option value="range">Range %</option>
+          <option value="downside">Downside %</option>
+          <option value="sharpe">Sharpe Proxy</option>
+          <option value="close2025">Close 2025</option>
+          <option value="close2024">Close 2024</option>
+          <option value="index2025">Indexed 2025 (2024=100)</option>
+          <option value="sharpe_norm">Sharpe Normalized (0–100)</option>
+        </select>
+      </div>
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <label class="block text-xs text-gray-600 mb-1">Main Chart Type</label>
+        <select id="chartTypeSelect" class="w-full rounded-xl border-gray-200">
+          <option value="bar">Bar</option>
+          <option value="line" selected>Line</option>
+        </select>
+      </div>
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <label class="block text-xs text-gray-600 mb-1">Sort</label>
+        <select id="sortSelect" class="w-full rounded-xl border-gray-200">
+          <option value="none">None</option>
+          <option value="asc">Ascending</option>
+          <option value="desc">Descending</option>
+        </select>
+      </div>
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <label class="block text-xs text-gray-600 mb-1">Decimals</label>
+        <input id="decimals" type="range" min="0" max="2" step="1" value="2" class="w-full">
+        <div class="text-xs mt-1"><span id="decLabel">2</span> decimals</div>
+      </div>
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <label class="block text-xs text-gray-600 mb-1">Sharpe Top-N</label>
+        <input id="topN" type="range" min="3" max="9" step="1" value="9" class="w-full">
+        <div class="text-xs mt-1">Showing top <span id="topNLabel">9</span> by Sharpe</div>
+      </div>
+    </div>
+
+    <!-- Main Chart -->
+    <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Main Chart</h2>
+        <div class="ctrl">
+          <label for="scatterToggle" class="text-sm">Risk–Return scatter (quadrants + trendline)</label>
+          <input id="scatterToggle" type="checkbox">
+        </div>
+      </div>
+      <div id="mainChart" style="height: 420px;"></div>
+    </div>
+
+    <!-- Sharpe Ranked Bar (interactive) -->
+    <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Risk-Adjusted Ranking (Sharpe)</h2>
+        <div class="ctrl">
+          <label for="capSharpeToggle" class="text-sm">Cap Sharpe axis</label>
+          <input id="capSharpeToggle" type="checkbox" checked>
+        </div>
+      </div>
+      <div id="sharpeChart" style="height: 480px;"></div>
+    </div>
+
+    <!-- Pinned compare -->
+    <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Pinned Comparison</h2>
+        <div class="ctrl">
+          <span class="text-xs text-gray-500">Click a bar/point to pin or unpin.</span>
+          <button id="clearPins" class="btn border border-gray-300">Clear Pins</button>
+        </div>
+      </div>
+      <div id="pinChips" class="mb-3"></div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm table-min">
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="text-left">Index</th>
+              <th class="text-right">YoY %</th>
+              <th class="text-right">Range %</th>
+              <th class="text-right">Sharpe</th>
+              <th class="text-right">Rank (Sharpe)</th>
+            </tr>
+          </thead>
+          <tbody id="pinBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Rank heatmap -->
+    <div class="soft-card bg-white rounded-2xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Rank Heatmap — Lower is Better (1 = best)</h2>
+        <p class="text-xs text-gray-500">YoY% (high good), Range% (low good), Downside% (low good), Sharpe (high good)</p>
+      </div>
+      <div id="rankHeatmap" style="height: 520px;"></div>
+    </div>
+  </div>
+
+  <script>
+    // --- Data ---
+    const rows = [
+      {name:"All Share", close25:104458.36, close24:81978.59, yoy:27.42, high:104613.93, low:101532.28},
+      {name:"Mid Cap", close25:100870.13, close24:86327.40, yoy:16.85, high:101541.09, low:99605.01},
+      {name:"Small Cap", close25:98042.85, close24:85660.36, yoy:14.46, high:98146.98, low:96186.38},
+      {name:"Top 40", close25:97036.58, close24:74367.50, yoy:30.48, high:97240.37, low:94165.63},
+      {name:"Resource 10", close25:99602.83, close24:54630.70, yoy:82.32, high:100904.17, low:93968.36},
+      {name:"Industrial 25", close25:139282.28, close24:111179.80, yoy:25.28, high:139862.36, low:137244.73},
+      {name:"Financial 15", close25:21763.46, close24:20610.81, yoy:5.59, high:21919.46, low:21159.04},
+      {name:"Financial & Industrial 30", close25:136550.12, close24:115771.10, yoy:17.95, high:136949.34, low:134005.94},
+      {name:"AltX", close25:616.65, close24:636.78, yoy:-3.16, high:620.30, low:600.16}
+    ];
+    rows.forEach(r => {
+      r.range = (r.high - r.low) / r.close25 * 100;
+      r.downside = (r.close25 - r.low) / r.close25 * 100;
+      r.sharpe = r.range !== 0 ? r.yoy / r.range : 0;
+      r.index25 = (r.close25 / r.close24) * 100;
+    });
+    const maxSharpe = Math.max(...rows.map(r => r.sharpe));
+    rows.forEach(r => r.sharpe_norm = (r.sharpe / maxSharpe) * 100);
+
+    // --- State ---
+    const get = id => document.getElementById(id);
+    const metricSelect = get('metricSelect'), chartTypeSelect = get('chartTypeSelect');
+    const sortSelect = get('sortSelect'), decSlider = get('decimals'), decLabel = get('decLabel');
+    const rawBtn = get('rawBtn'), stdBtn = get('stdBtn'), clearSelBtn = get('clearSel');
+    const scatterToggle = get('scatterToggle'), capSharpeToggle = get('capSharpeToggle');
+    const topN = get('topN'), topNLabel = get('topNLabel');
+    const clearPins = get('clearPins'), pinChips = get('pinChips'), pinBody = get('pinBody');
+
+    let view = 'raw'; // 'raw' | 'std'
+    let selected = null; // single highlight
+    let pinned = new Set(); // multiple compare
+
+    function metricFor(r, key) {
+      if (key === 'yoy') return r.yoy;
+      if (key === 'range') return r.range;
+      if (key === 'downside') return r.downside;
+      if (key === 'sharpe') return r.sharpe;
+      if (key === 'close2025') return r.close25;
+      if (key === 'close2024') return r.close24;
+      if (key === 'index2025') return r.index25;
+      if (key === 'sharpe_norm') return r.sharpe_norm;
+      return 0;
+    }
+    function unitFor(key) {
+      if (key === 'yoy' || key === 'range' || key === 'downside') return '%';
+      return '';
+    }
+    function median(arr){ const a=[...arr].sort((x,y)=>x-y); const n=a.length; return n%2? a[(n-1)/2] : (a[n/2-1]+a[n/2])/2; }
+
+    function buildColors(names, values){
+      const base = values.map(v => v >= 0 ? '#111827' : '#EF4444');
+      if (selected){
+        names.forEach((n,i)=> { base[i] = (n===selected) ? '#6366F1' : base[i] + '80'; });
+      }
+      return base;
+    }
+
+    const baseConfig = { responsive: true, displaylogo: false, displayModeBar: false, scrollZoom: true };
+
+    // --- Trendline + R² & Efficient Frontier helpers ---
+    function ols(x, y) {
+      const n = x.length;
+      const mean = a => a.reduce((s,v)=>s+v,0)/a.length;
+      const mx = mean(x), my = mean(y);
+      let num=0, den=0, sst=0, ssr=0;
+      for (let i=0;i<n;i++){ const dx = x[i]-mx; const dy = y[i]-my; num += dx*dy; den += dx*dx; sst += dy*dy; }
+      const slope = den===0?0:num/den;
+      const intercept = my - slope*mx;
+      for (let i=0;i<n;i++){ const yhat = intercept + slope*x[i]; const dy = y[i]-my; const res = y[i]-yhat; ssr += (dy - res)*(dy - res); } // actually SSR is regression sum; simpler R^2:
+      const r2 = (num*num)/(den * x.reduce((s,v,i)=> s + Math.pow(y[i]-my,2), 0));
+      return {slope, intercept, r2};
+    }
+    function nonDominated(points) {
+      // points: [{x:range, y:yoy, name}]
+      return points.filter(p => !points.some(q =>
+        (q.y >= p.y && q.x <= p.x) && (q.y > p.y || q.x < p.x)
+      ));
+    }
+
+    // Main chart (metric or Risk–Return scatter with trendline/frontier)
+    function drawMain() {
+      const dec = +decSlider.value;
+      const metric = metricSelect.value;
+      const unit = unitFor(metric);
+
+      if (scatterToggle.checked) {
+        const pts = rows.map(r => ({ name:r.name, x:r.range, y:r.yoy }));
+        const nd = nonDominated(pts).sort((a,b)=> a.x - b.x);
+        const x = pts.map(p=>p.x), y = pts.map(p=>p.y), names = pts.map(p=>p.name);
+        const {slope, intercept, r2} = ols(x,y);
+        const xmin = Math.min(...x), xmax = Math.max(...x);
+        const lineX = [xmin, xmax];
+        const lineY = [intercept + slope*xmin, intercept + slope*xmax];
+
+        const colors = names.map((n,i) => {
+          const isND = nd.find(p => p.name===n);
+          let c = isND ? '#0EA5E9' : '#D1D5DB';
+          if (selected && n !== selected) c += '80';
+          if (selected && n === selected) c = '#6366F1';
+          return c;
+        });
+
+        const tracePts = {
+          type: 'scatter', mode: 'markers+text',
+          x, y, text: names, textposition: 'top center',
+          marker: { size: 10, color: colors },
+          hovertemplate: '%{text}<br>Range %{x:.'+dec+'f}%'+'<br>YoY %{y:.'+dec+'f}%<extra></extra>'
+        };
+        const traceLine = {
+          type: 'scatter', mode: 'lines',
+          x: lineX, y: lineY, line: { dash:'dash' }, name: 'Trendline'
+        };
+        const traceFrontier = {
+          type: 'scatter', mode: 'lines+markers+text',
+          x: nd.map(p=>p.x), y: nd.map(p=>p.y), text: nd.map(p=>p.name),
+          textposition: 'top center',
+          marker: { size: 8, color:'#0EA5E9' }, line: { color:'#0EA5E9' },
+          name: 'Efficient frontier'
+        };
+
+        const mx = median(x), my = median(y);
+        const layout = {
+          margin: { l: 60, r: 10, t: 30, b: 60 },
+          hovermode: 'closest',
+          xaxis: { title: 'Range %', zeroline: false },
+          yaxis: { title: 'YoY %', zeroline: false },
+          shapes: [
+            { type:'line', x0:mx, x1:mx, y0:Math.min(...y)-5, y1:Math.max(...y)+5, line:{dash:'dot', width:1, color:'#9CA3AF'} },
+            { type:'line', x0:Math.min(...x)-1, x1:Math.max(...x)+1, y0:my, y1:my, line:{dash:'dot', width:1, color:'#9CA3AF'} }
+          ],
+          annotations: [
+            { x: (xmin+xmax)/2, y: Math.max(...y)+6, text: 'R²: '+r2.toFixed(2), showarrow:false, font:{size:12, color:'#111827'} }
+          ],
+          height: 420
+        };
+
+        Plotly.newPlot('mainChart', [tracePts, traceLine, traceFrontier], layout, baseConfig).then(gd => {
+          gd.on('plotly_click', (e) => {
+            const name = e.points?.[0]?.text;
+            if (!name) return;
+            selected = name;
+            // toggle pin
+            if (pinned.has(name)) pinned.delete(name); else pinned.add(name);
+            drawSharpe(); drawMain(); drawTable(); drawPins();
+          });
+        });
+
+      } else {
+        let arr = rows.map(r => ({name:r.name, v: metricFor(r, metric)}));
+        if (sortSelect.value !== 'none') {
+          arr.sort((a,b) => sortSelect.value==='asc' ? a.v-b.v : b.v-a.v);
+        }
+        const labels = arr.map(x => x.name);
+        const values = arr.map(x => x.v);
+
+        const trace = {
+          type: chartTypeSelect.value === 'bar' ? 'bar' : 'scatter',
+          mode: chartTypeSelect.value === 'bar' ? undefined : 'lines+markers',
+          x: labels,
+          y: values,
+          marker: { color: buildColors(labels, values) },
+          hovertemplate: '%{x}<br>%{y:.'+dec+'f}'+(unit==='%'?'%':'')+'<extra></extra>'
+        };
+
+        const layout = {
+          margin: { l: 50, r: 10, t: 30, b: 70 },
+          hovermode: 'x unified',
+          xaxis: { tickangle: -30, showspikes: true, spikemode: 'across', spikesnap:'cursor' },
+          yaxis: { title: metricSelect.options[metricSelect.selectedIndex].text, showspikes: true, spikemode: 'across', spikesnap:'cursor' },
+          height: 420
+        };
+
+        Plotly.newPlot('mainChart', [trace], layout, baseConfig).then(gd => {
+          gd.on('plotly_click', (e) => {
+            const name = e.points?.[0]?.x;
+            if (!name) return;
+            selected = name;
+            drawSharpe(); drawMain(); drawTable();
+          });
+        });
+      }
+    }
+
+    // Sharpe ranked bar (horizontal) with Top-N
+    function drawSharpe() {
+      const dec = +decSlider.value;
+      const valKey = (view === 'raw') ? 'sharpe' : 'sharpe_norm';
+      let data = rows.map(r => ({name:r.name, v: r[valKey], yoy:r.yoy, range:r.range, sharpe:r.sharpe}))
+                     .sort((a,b) => b.v - a.v);
+      const n = +topN.value;
+      data = data.slice(0, n);
+
+      const labels = data.map(d => d.name);
+      const values = data.map(d => d.v);
+      const texts = data.map(d => `YoY ${d.yoy.toFixed(dec)}% / Range ${d.range.toFixed(dec)}%`);
+
+      let xmin = Math.min(0, Math.min(...values) - 1);
+      let xmax = Math.max((view==='raw'?15:100), Math.max(...values) * 1.1);
+      if (capSharpeToggle.checked) {
+        xmin = 0;
+        xmax = (view==='raw' ? 15 : 100);
+      }
+
+      const colors = labels.map((n,i)=> {
+        let c = '#6366F1';
+        if (selected && labels[i] !== selected) c += '80';
+        if (!selected) c = '#6366F1';
+        if (selected && labels[i] === selected) c = '#111827';
+        return c;
+      });
+
+      const trace = {
+        type: 'bar',
+        x: values,
+        y: labels,
+        orientation: 'h',
+        text: texts,
+        textposition: 'outside',
+        marker: { color: colors },
+        hovertemplate: '%{y}<br>' +
+                       (view==='raw' ? 'Sharpe %{x:.'+dec+'f}' : 'Sharpe (0–100) %{x:.'+dec+'f}') +
+                       '<br>%{text}<extra></extra>'
+      };
+
+      const layout = {
+        margin: { l: 180, r: 20, t: 30, b: 40 },
+        xaxis: { range: [xmin, xmax], title: (view==='raw'?'Sharpe Proxy':'Sharpe Normalized (0–100)') },
+        height: 480
+      };
+
+      Plotly.newPlot('sharpeChart', [trace], layout, baseConfig).then(gd => {
+        gd.on('plotly_click', (e) => {
+          const name = e.points?.[0]?.y;
+          if (!name) return;
+          selected = name;
+          // toggle pin
+          if (pinned.has(name)) pinned.delete(name); else pinned.add(name);
+          drawMain(); drawSharpe(); drawTable(); drawPins();
+        });
+      });
+    }
+
+    // Table (unchanged, minimal)
+    function drawTable() {
+      const dec = +decSlider.value;
+      const tbody = document.getElementById('dataBody'); // might not exist in v5 (removed table); guard
+      if (!tbody) return;
+      const maxSharpe = Math.max(...rows.map(r => r.sharpe));
+      tbody.innerHTML = rows.map(r => `
+        <tr class="border-t border-gray-100 ${selected && r.name!==selected ? 'opacity-60' : ''}">
+          <td class="px-3 py-2">${r.name}</td>
+          <td class="px-3 py-2 text-right">${r.close25.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${r.close24.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${r.yoy.toFixed(dec)}%</td>
+          <td class="px-3 py-2 text-right">${r.high.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${r.low.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${r.range.toFixed(dec)}%</td>
+          <td class="px-3 py-2 text-right">${r.downside.toFixed(dec)}%</td>
+          <td class="px-3 py-2 text-right">${r.sharpe.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${r.index25.toFixed(dec)}</td>
+          <td class="px-3 py-2 text-right">${(r.sharpe/maxSharpe*100).toFixed(dec)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Pinned UI
+    function drawPins() {
+      // chips
+      pinChips.innerHTML = Array.from(pinned).map(n => `<span class="chip">${n}<button data-n="${n}" title="Unpin">×</button></span>`).join('') || '<span class="text-xs text-gray-500">No pins yet.</span>';
+      // table rows
+      const dec = +decSlider.value;
+      // Rank by Sharpe (raw)
+      const ranks = rows.slice().sort((a,b)=> b.sharpe - a.sharpe).map((r,i)=>({name:r.name, rank:i+1}));
+      const rankMap = Object.fromEntries(ranks.map(x=>[x.name, x.rank]));
+      pinBody.innerHTML = Array.from(pinned).map(n => {
+        const r = rows.find(x=>x.name===n);
+        return `<tr class="border-t border-gray-100">
+          <td>${r.name}</td>
+          <td class="text-right">${r.yoy.toFixed(dec)}%</td>
+          <td class="text-right">${r.range.toFixed(dec)}%</td>
+          <td class="text-right">${r.sharpe.toFixed(dec)}</td>
+          <td class="text-right">#${rankMap[r.name]}</td>
+        </tr>`;
+      }).join('');
+      // chip remove handlers
+      Array.from(pinChips.querySelectorAll('button[data-n]')).forEach(btn => {
+        btn.addEventListener('click', () => {
+          pinned.delete(btn.getAttribute('data-n'));
+          drawPins(); drawMain(); drawSharpe();
+        });
+      });
+    }
+    clearPins.addEventListener('click', ()=> { pinned.clear(); drawPins(); drawMain(); drawSharpe(); });
+
+    // Rank Heatmap
+    function drawRankHeatmap() {
+      const metrics = ['YoY %','Range %','Downside %','Sharpe'];
+      // compute ranks
+      const by = {
+        'YoY %': (a,b)=> b.yoy - a.yoy,          // higher better
+        'Range %': (a,b)=> a.range - b.range,    // lower better
+        'Downside %': (a,b)=> a.downside - b.downside, // lower better
+        'Sharpe': (a,b)=> b.sharpe - a.sharpe    // higher better
+      };
+      const names = rows.map(r=>r.name);
+      const rank = {};
+      metrics.forEach(m => {
+        const sorted = rows.slice().sort(by[m]);
+        sorted.forEach((r,i)=> { if (!rank[r.name]) rank[r.name] = {}; rank[r.name][m] = i+1; });
+      });
+      const z = names.map(n => metrics.map(m => rank[n][m]));
+      const text = names.map(n => metrics.map(m => '#'+rank[n][m]));
+      const data = [{
+        type:'heatmap',
+        z, x: metrics, y: names,
+        colorscale: [[0,'#0ea5e9'], [1,'#fde68a']],
+        reversescale: true,
+        showscale: true,
+        hovertemplate: '%{y} — %{x}<br>Rank %{z}<extra></extra>'
+      }];
+      const layout = { margin:{l:180,r:20,t:20,b:40}, height: 520, xaxis:{side:'top'} };
+      Plotly.newPlot('rankHeatmap', data, layout, baseConfig).then(gd => {
+        // add annotations for rank numbers
+        const ann = [];
+        for (let i=0;i<names.length;i++) {
+          for (let j=0;j<metrics.length;j++) {
+            ann.push({
+              x: metrics[j], y: names[i], text: text[i][j],
+              showarrow:false, font:{size:10, color:'#111827'}
+            });
+          }
+        }
+        Plotly.relayout('rankHeatmap', {annotations: ann});
+      });
+    }
+
+    // Interactions & init
+    function refresh() {
+      drawMain();
+      drawSharpe();
+      drawPins();
+      drawRankHeatmap();
+    }
+
+    // Wiring
+    window.addEventListener('DOMContentLoaded', () => {
+      decSlider.addEventListener('input', ()=>{ decLabel.textContent = decSlider.value; refresh(); });
+      metricSelect.addEventListener('change', refresh);
+      chartTypeSelect.addEventListener('change', refresh);
+      sortSelect.addEventListener('change', refresh);
+      rawBtn.addEventListener('click', ()=> { rawBtn.classList.add('active'); stdBtn.classList.remove('active'); view='raw'; refresh(); });
+      stdBtn.addEventListener('click', ()=> { rawBtn.classList.remove('active'); stdBtn.classList.add('active'); view='std'; refresh(); });
+      clearSelBtn.addEventListener('click', ()=> { selected = null; refresh(); });
+      scatterToggle.addEventListener('change', refresh);
+      capSharpeToggle.addEventListener('change', refresh);
+      topN.addEventListener('input', ()=> { topNLabel.textContent = topN.value; drawSharpe(); });
+      // Initial
+      refresh();
+    });
+  </script>
+</body>
+</html>
