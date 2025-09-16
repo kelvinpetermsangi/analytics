@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Market Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.plot.ly/plotly-2.34.0.min.js"></script>
+<style>
+  .soft-card{box-shadow:0 10px 25px rgba(0,0,0,.05)}
+  .seg{display:inline-flex;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb}
+  .seg button{padding:6px 10px;font-size:12px}
+  .seg .active{background:#111827;color:#fff}
+  .btn{padding:6px 10px;border-radius:10px;font-size:12px}
+  .ctrl{display:flex;align-items:center;gap:.5rem}
+  .chip{display:inline-flex;align-items:center;gap:.4rem;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:.2rem .6rem;margin:.15rem}
+  .chip button{background:transparent;border:none;cursor:pointer;font-size:12px;color:#111827}
+  .table-min td,.table-min th{padding:.35rem .5rem}
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+<div class="max-w-7xl mx-auto p-4 md:p-8">
+  <header class="mb-6">
+    <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Market Dashboard</h1>
+    <p class="text-sm text-gray-600">Use the Open/Hide buttons to expand sections. Hover for details. Click bars/points to pin in Sharpe charts. All checkboxes start off.</p>
+  </header>
+
+  <!-- Exchange KPIs -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="soft-card bg-white rounded-2xl p-4">
+      <h2 class="text-lg font-semibold mb-1">Total JSE Market Capitalisation</h2>
+      <div class="grid grid-cols-3 gap-4">
+        <div><div class="text-xs text-gray-600">12.09.2025 (R bn)</div><div class="text-xl font-semibold" id="cap2025">—</div></div>
+        <div><div class="text-xs text-gray-600">13.09.2024 (R bn)</div><div class="text-xl font-semibold" id="cap2024">—</div></div>
+        <div><div class="text-xs text-gray-600">% Change YoY</div><div class="text-xl font-semibold" id="capYoY">—</div></div>
+      </div>
+    </div>
+    <div class="soft-card bg-white rounded-2xl p-4">
+      <h2 class="text-lg font-semibold mb-1">JSE Limited Statistics</h2>
+      <div class="grid grid-cols-4 gap-4">
+        <div><div class="text-xs text-gray-600">Market Cap</div><div class="text-xl font-semibold" id="jse_mc">—</div></div>
+        <div><div class="text-xs text-gray-600">Trades</div><div class="text-xl font-semibold" id="jse_tr">—</div></div>
+        <div><div class="text-xs text-gray-600">Volume</div><div class="text-xl font-semibold" id="jse_vol">—</div></div>
+        <div><div class="text-xs text-gray-600">Value (R'000)</div><div class="text-xl font-semibold" id="jse_val">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Equity Analysis -->
+  <section class="soft-card bg-white rounded-2xl p-4 mb-8">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Equity Analysis</h2>
+      <button id="toggleEquity" class="btn border border-gray-300">Open</button>
+    </div>
+    <div id="equityWrap" class="hidden">
+      <div class="mb-4 flex items-center gap-3">
+        <div class="seg" role="tablist" aria-label="Period">
+          <button id="wkBtn" class="active" role="tab" aria-selected="true">Weekly</button>
+          <button id="ytdBtn" role="tab" aria-selected="false">YTD</button>
+        </div>
+        <div class="seg" role="tablist" aria-label="Mode">
+          <button id="rawBtn" class="active" role="tab" aria-selected="true">Raw</button>
+          <button id="stdBtn" role="tab" aria-selected="false">Standardized</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div class="soft-card bg-white rounded-2xl p-4"><div class="text-xs text-gray-600">Turnover Value (R'000)</div><div id="kpi_value" class="text-xl font-semibold">—</div><div id="kpi_value_delta" class="text-xs">—</div></div>
+        <div class="soft-card bg-white rounded-2xl p-4"><div class="text-xs text-gray-600">Avg Trade Size (R'000/trade)</div><div id="kpi_avg_trade" class="text-xl font-semibold">—</div><div id="kpi_avg_trade_delta" class="text-xs">—</div></div>
+        <div class="soft-card bg-white rounded-2xl p-4"><div class="text-xs text-gray-600">Value per Share (R/share)</div><div id="kpi_vps" class="text-xl font-semibold">—</div><div id="kpi_vps_delta" class="text-xs">—</div></div>
+        <div class="soft-card bg-white rounded-2xl p-4"><div class="text-xs text-gray-600">Foreign Net % of Turnover</div><div id="kpi_net_pct" class="text-xl font-semibold">—</div><div class="text-xs text-gray-500">Net flow / total value</div></div>
+      </section>
+
+      <!-- Turnover & Efficiency -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">Turnover — Trades / Volume / Value</h3>
+            <div class="ctrl"><label for="turnStd" class="text-sm">Standardize (2024=100)</label><input id="turnStd" type="checkbox"></div>
+          </div>
+          <div id="turnoverChart" style="height:420px;"></div>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-2"><h3 class="font-semibold">Efficiency — Avg Trade Size & Value/Share</h3></div>
+          <div id="efficiencyChart" style="height:420px;"></div>
+        </div>
+      </section>
+
+      <!-- Liquidity, YoY Rank -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <h3 class="font-semibold mb-2">Liquidity — Volume vs Value (trendline)</h3>
+          <div id="liquidityScatter" style="height:420px;"></div>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">YoY Ranking</h3>
+            <div class="ctrl"><label for="topN_eq" class="text-sm">Top-N</label><input id="topN_eq" type="range" min="3" max="10" step="1" value="7"><span class="text-xs" id="topNLabel_eq">7</span></div>
+          </div>
+          <div id="yoyRank" style="height:480px;"></div>
+        </div>
+      </section>
+
+      <!-- Foreign & Reported -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="soft-card bg-white rounded-2xl p-4"><h3 class="font-semibold mb-2">Foreign Flow — Purchases, Sales & Net</h3><div id="foreignWaterfall" style="height:420px;"></div></div>
+        <div class="soft-card bg-white rounded-2xl p-4"><h3 class="font-semibold mb-2">Reported Trades — Share of Total Value</h3><div id="reportedDonut" style="height:420px;"></div></div>
+      </section>
+
+      <!-- Pins & Heatmap -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">Pinned Comparison</h3>
+            <div class="ctrl"><span class="text-xs text-gray-500">Click a bar/point to pin or unpin in the above sharpe chart</span><button id="clearPins_eq" class="btn border border-gray-300">Clear Pins</button></div>
+          </div>
+          <div id="pinChips_eq" class="mb-3"></div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm table-min">
+              <thead class="bg-gray-100"><tr><th class="text-left">Item</th><th class="text-right">2025</th><th class="text-right">2024</th><th class="text-right">YoY %</th></tr></thead>
+              <tbody id="pinBody_eq"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3"><h3 class="font-semibold">Rank Heatmap — Lower is Better (1 = best)</h3><p class="text-xs text-gray-500">YoY% (high good), Index 2025 (high good)</p></div>
+          <div id="rankHeatmap_eq" style="height:520px;"></div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- Index Movement Analysis -->
+  <section class="soft-card bg-white rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Index Movement Analysis</h2>
+      <button id="toggleIndex" class="btn border border-gray-300">Open</button>
+    </div>
+    <div id="indexWrap" class="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <label class="block text-xs text-gray-600 mb-1">Main Metric</label>
+          <select id="metricSelect" class="w-full rounded-xl border-gray-200">
+            <option value="yoy">YoY %</option><option value="range">Range %</option><option value="downside">Downside %</option>
+            <option value="sharpe">Sharpe Proxy</option><option value="close2025">Close 2025</option><option value="close2024">Close 2024</option>
+            <option value="index2025">Indexed 2025 (2024=100)</option><option value="sharpe_norm">Sharpe Normalized (0–100)</option>
+          </select>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <label class="block text-xs text-gray-600 mb-1">Main Chart Type</label>
+          <select id="chartTypeSelect" class="w-full rounded-xl border-gray-200">
+            <option value="bar">Bar</option><option value="line" selected>Line</option>
+          </select>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <label class="block text-xs text-gray-600 mb-1">Sort</label>
+          <select id="sortSelect" class="w-full rounded-xl border-gray-200">
+            <option value="none">None</option><option value="asc">Ascending</option><option value="desc">Descending</option>
+          </select>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <label class="block text-xs text-gray-600 mb-1">Decimals</label>
+          <input id="decimals" type="range" min="0" max="2" step="1" value="2" class="w-full">
+          <div class="text-xs mt-1"><span id="decLabel">2</span> decimals</div>
+        </div>
+        <div class="soft-card bg-white rounded-2xl p-4">
+          <label class="block text-xs text-gray-600 mb-1">Sharpe Top-N</label>
+          <input id="topN" type="range" min="3" max="9" step="1" value="9" class="w-full">
+          <div class="text-xs mt-1">Showing top <span id="topNLabel">9</span></div>
+        </div>
+      </div>
+
+      <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold">Main Chart</h3>
+          <div class="ctrl"><label for="scatterToggle" class="text-sm">Risk–Return scatter (trendline)</label><input id="scatterToggle" type="checkbox"></div>
+        </div>
+        <div id="mainChart" style="height:420px;"></div>
+      </div>
+
+      <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold">Risk-Adjusted Ranking (Sharpe)</h3>
+          <div class="ctrl"><label for="capSharpeToggle" class="text-sm">Cap Sharpe axis</label><input id="capSharpeToggle" type="checkbox"></div>
+        </div>
+        <div id="sharpeChart" style="height:480px;"></div>
+      </div>
+
+      <div class="soft-card bg-white rounded-2xl p-4 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold">Pinned Comparison</h3>
+          <div class="ctrl"><span class="text-xs text-gray-500">Click a bar/point to pin or unpin in the above sharpe chart</span><button id="clearPins" class="btn border border-gray-300">Clear Pins</button></div>
+        </div>
+        <div id="pinChips" class="mb-3"></div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm table-min">
+            <thead class="bg-gray-100"><tr><th class="text-left">Index</th><th class="text-right">YoY %</th><th class="text-right">Range %</th><th class="text-right">Sharpe</th><th class="text-right">Rank (Sharpe)</th></tr></thead>
+            <tbody id="pinBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="soft-card bg-white rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3"><h3 class="font-semibold">Rank Heatmap — Lower is Better (1 = best)</h3><p class="text-xs text-gray-500">YoY% (high good), Range% (low), Downside% (low), Sharpe (high)</p></div>
+        <div id="rankHeatmap" style="height:520px;"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const baseConfig={responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false};
+
+const EXCHANGE={market_cap_rb_2025:22604.14,market_cap_rb_2024:18499.78,market_cap_yoy_pct:22.19,
+  jse_ltd_stats:{market_cap:4472,trades:1029077,volume:132054801,value_r000:11250393}};
+
+const EQUITY={
+  weekly:{turnover:{trades:2112375,volume:1606778,value:166081906},reported:{trades:430,volume:259458,value:24263617},foreign:{purchases:28432415,sales:26110348,net:2322067}},
+  ytd:{turnover:{trades:69207435,volume:59576606,value:4899147276},reported:{trades:16775,volume:8913592,value:696685945},foreign:{purchases:687770116,sales:881317023,net:-193546907}},
+  base_2024:{weekly:{trades:2243345,volume:1676963,value:115398740},ytd:{trades:64785641,volume:53270020,value:3686106824}}
+};
+EQUITY.derived={
+  weekly:(()=>{const t=EQUITY.weekly.turnover,r=EQUITY.weekly.reported,f=EQUITY.weekly.foreign;
+    return {avg_trade_size:t.value/Math.max(t.trades,1),value_per_share:t.value/Math.max(t.volume,1),
+            reported_share_value:r.value/t.value,foreign_net_pct_turnover:f.net/t.value};})(),
+  ytd:(()=>{const t=EQUITY.ytd.turnover,r=EQUITY.ytd.reported,f=EQUITY.ytd.foreign;
+    return {avg_trade_size:t.value/Math.max(t.trades,1),value_per_share:t.value/Math.max(t.volume,1),
+            reported_share_value:r.value/t.value,foreign_net_pct_turnover:f.net/t.value};})()
+};
+
+const INDICES=[
+  {name:"All Share",close25:104458.36,close24:81978.59,yoy:27.42,high:104613.93,low:101532.28},
+  {name:"Mid Cap",close25:100870.13,close24:86327.40,yoy:16.85,high:101541.09,low:99605.01},
+  {name:"Small Cap",close25:98042.85,close24:85660.36,yoy:14.46,high:98146.98,low:96186.38},
+  {name:"Top 40",close25:97036.58,close24:74367.50,yoy:30.48,high:97240.37,low:94165.63},
+  {name:"Resource 10",close25:99602.83,close24:54630.70,yoy:82.32,high:100904.17,low:93968.36},
+  {name:"Industrial 25",close25:139282.28,close24:111179.80,yoy:25.28,high:139862.36,low:137244.73},
+  {name:"Financial 15",close25:21763.46,close24:20610.81,yoy:5.59,high:21919.46,low:21159.04},
+  {name:"Financial & Industrial 30",close25:136550.12,close24:115771.10,yoy:17.95,high:136949.34,low:134005.94},
+  {name:"AltX",close25:616.65,close24:636.78,yoy:-3.16,high:620.30,low:600.16}
+].map(r=>{r.range=(r.high-r.low)/r.close25*100;r.downside=(r.close25-r.low)/r.close25*100;r.sharpe=r.range? r.yoy/r.range:0;r.index25=(r.close25/r.close24)*100;return r;});
+const maxSharpe=Math.max(...INDICES.map(r=>r.sharpe));
+INDICES.forEach(r=>r.sharpe_norm = (r.sharpe/maxSharpe)*100);
+
+// helpers
+const fmt=(n,d=2)=>n.toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d});
+const pct=(n)=>((n>=0?'+':'')+n.toFixed(2)+'%');
+const fixedAxes=(layout)=>({ ...layout, xaxis:{...(layout.xaxis||{}),fixedrange:true}, yaxis:{...(layout.yaxis||{}),fixedrange:true} });
+const colorNum=(el,val)=>{el.classList.remove('text-green-600','text-red-600');el.classList.add(val>=0?'text-green-600':'text-red-600');};
+
+// Exchange populate
+document.addEventListener('DOMContentLoaded',()=>{
+  const cap25=EXCHANGE.market_cap_rb_2025,cap24=EXCHANGE.market_cap_rb_2024,y=EXCHANGE.market_cap_yoy_pct;
+  cap2025.textContent=fmt(cap25,2); cap2024.textContent=fmt(cap24,2); capYoY.textContent=`${y.toFixed(2)}%`; colorNum(capYoY,y);
+  jse_mc.textContent=EXCHANGE.jse_ltd_stats.market_cap.toLocaleString();
+  jse_tr.textContent=EXCHANGE.jse_ltd_stats.trades.toLocaleString();
+  jse_vol.textContent=EXCHANGE.jse_ltd_stats.volume.toLocaleString();
+  jse_val.textContent=EXCHANGE.jse_ltd_stats.value_r000.toLocaleString();
+});
+
+// Section toggles (hidden by default)
+const eqWrap=document.getElementById('equityWrap'), idxWrap=document.getElementById('indexWrap');
+const toggleEquity=document.getElementById('toggleEquity'), toggleIndex=document.getElementById('toggleIndex');
+toggleEquity.addEventListener('click',()=>{eqWrap.classList.toggle('hidden');toggleEquity.textContent=eqWrap.classList.contains('hidden')?'Open':'Hide';});
+toggleIndex.addEventListener('click',()=>{idxWrap.classList.toggle('hidden');toggleIndex.textContent=idxWrap.classList.contains('hidden')?'Open':'Hide';});
+
+// Equity charts
+let period='weekly', stdMode='raw', pinsEq=new Set();
+function idx100(a,b){return b===0?100:(a/b*100);}
+function updateKPI(){
+  const t=EQUITY[period].turnover,d=EQUITY.derived[period],b=EQUITY.base_2024[period];
+  const valYoY=(t.value/b.value-1)*100; kpi_value.textContent=t.value.toLocaleString(); kpi_value_delta.textContent=pct(valYoY); colorNum(kpi_value_delta,valYoY);
+  const a=d.avg_trade_size, a0=b.value/b.trades, aYoY=(a/a0-1)*100; kpi_avg_trade.textContent=fmt(a,2); kpi_avg_trade_delta.textContent=pct(aYoY); colorNum(kpi_avg_trade_delta,aYoY);
+  const v=d.value_per_share, v0=b.value/b.volume, vYoY=(v/v0-1)*100; kpi_vps.textContent=fmt(v,2); kpi_vps_delta.textContent=pct(vYoY); colorNum(kpi_vps_delta,vYoY);
+  const netPct=d.foreign_net_pct_turnover*100; kpi_net_pct.textContent=pct(netPct); colorNum(kpi_net_pct,netPct);
+}
+function drawTurnover(){
+  const t=EQUITY[period].turnover,b=EQUITY.base_2024[period];
+  let y25=[t.trades,t.volume,t.value], y24=[b.trades,b.volume,b.value];
+  if(stdMode==='std'||turnStd.checked){y24=[100,100,100];y25=[idx100(t.trades,b.trades),idx100(t.volume,b.volume),idx100(t.value,b.value)];}
+  const labels=['Trades','Volume (000s)','Value (R 000s)'];
+  const data=[{type:'bar',name:(period==='weekly'?'2025 Week':'2025 YTD'),x:labels,y:y25,marker:{color:'#111827'}},
+              {type:'bar',name:(period==='weekly'?'2024 Week':'2024 YTD'),x:labels,y:y24,marker:{color:'#9CA3AF'}}];
+  Plotly.newPlot('turnoverChart',data,fixedAxes({barmode:'group',margin:{l:50,r:10,t:20,b:60},height:420}),baseConfig);
+}
+function drawEfficiency(){
+  const d=EQUITY.derived[period], b=EQUITY.base_2024[period];
+  const baseAvg=b.value/b.trades, baseVps=b.value/b.volume;
+  const labels=["Avg Trade Size (R'000/trade)","Value per Share (R/share)"];
+  const colors = ['#6366F1','#6366F1'];
+  const data=[{type:'bar',name:(period==='weekly'?'2025 Week':'2025 YTD'),x:labels,y:[d.avg_trade_size,d.value_per_share],marker:{color:colors}},
+              {type:'bar',name:(period==='weekly'?'2024 Week':'2024 YTD'),x:labels,y:[baseAvg,baseVps],marker:{color:'#D1D5DB'}}];
+  Plotly.newPlot('efficiencyChart',data,fixedAxes({barmode:'group',margin:{l:50,r:10,t:20,b:60},height:420}),baseConfig);
+}
+function ols(x,y){const n=x.length,m=a=>a.reduce((s,v)=>s+v,0)/a.length,mx=m(x),my=m(y);let num=0,den=0,dy=0;for(let i=0;i<n;i++){const dx=x[i]-mx,dyi=y[i]-my;num+=dx*dyi;den+=dx*dx;dy+=dyi*dyi}return {slope:den?num/den:0,intercept:my-(den?num/den:0)*mx};}
+function drawLiquidity(){
+  const w=EQUITY.weekly,y=EQUITY.ytd,p=[{n:'2025 Week',x:w.turnover.volume,y:w.turnover.value},{n:'2024 Week',x:EQUITY.base_2024.weekly.volume,y:EQUITY.base_2024.weekly.value},{n:'2025 YTD',x:y.turnover.volume,y:y.turnover.value},{n:'2024 YTD',x:EQUITY.base_2024.ytd.volume,y:EQUITY.base_2024.ytd.value}];
+  const xs=p.map(d=>d.x), ys=p.map(d=>d.y), names=p.map(d=>d.n); const {slope,intercept}=ols(xs,ys); const xmin=Math.min(...xs),xmax=Math.max(...xs);
+  const colors=['#16A34A','#9CA3AF','#16A34A','#9CA3AF'];
+  const lineY=[intercept+slope*xmin,intercept+slope*xmax];
+  Plotly.newPlot('liquidityScatter',
+    [{type:'scatter',mode:'markers+text',x:xs,y:ys,text:names,textposition:'top center',marker:{size:10,color:colors}},
+     {type:'scatter',mode:'lines',x:[xmin,xmax],y:lineY,line:{dash:'dash'}}],
+    fixedAxes({margin:{l:70,r:10,t:20,b:60},height:420,xaxis:{title:"Volume (000s)"},yaxis:{title:"Value (R 000s)"}}),
+    baseConfig);
+}
+function drawYoYRank(){
+  const n=+topN_eq.value; topNLabel_eq.textContent=n;
+  const mList=(()=>{const p=EQUITY[period],b=EQUITY.base_2024[period];return[
+    {k:'Trades',v25:p.turnover.trades,v24:b.trades},
+    {k:'Volume (000s)',v25:p.turnover.volume,v24:b.volume},
+    {k:'Value (R 000s)',v25:p.turnover.value,v24:b.value},
+    {k:'Reported Value (R 000s)',v25:p.reported.value,v24:0},
+    {k:'Foreign Purchases (R 000s)',v25:p.foreign.purchases,v24:0},
+    {k:'Foreign Sales (R 000s)',v25:p.foreign.sales,v24:0},
+    {k:'Foreign Net (R 000s)',v25:p.foreign.net,v24:0}
+  ].map(m=>({...m,yoy:m.v24?((m.v25/m.v24-1)*100):0}));})();
+  const arr=mList.sort((a,b)=>b.yoy-a.yoy).slice(0,n);
+  const colors=arr.map(d=>d.yoy>=0?'#16A34A':'#EF4444');
+  Plotly.newPlot('yoyRank',[{type:'bar',x:arr.map(d=>d.yoy),y:arr.map(d=>d.k),orientation:'h',marker:{color:colors}}],fixedAxes({margin:{l:210,r:20,t:20,b:40},height:480,xaxis:{title:'YoY %'}}),baseConfig);
+}
+function drawForeign(){
+  const f=EQUITY[period].foreign;
+  Plotly.newPlot('foreignWaterfall',[{type:'waterfall',x:['Purchases','Sales','Net'],y:[f.purchases,-f.sales,f.net],measure:['relative','relative','total'],
+    connector:{line:{color:'#9CA3AF'}},decreasing:{marker:{color:'#EF4444'}},increasing:{marker:{color:'#16A34A'}},totals:{marker:{color:'#111827'}}}],
+    fixedAxes({margin:{l:50,r:10,t:20,b:60},height:420,yaxis:{title:"R '000"}}),baseConfig);
+}
+function drawReported(){
+  const t=EQUITY[period].turnover,r=EQUITY[period].reported,share=r.value/t.value;
+  Plotly.newPlot('reportedDonut',[{type:'pie',labels:['Reported Trades','Other Turnover'],values:[share,1-share],hole:.6,textinfo:'label+percent',marker:{colors:['#6366F1','#E5E7EB']}}],{margin:{l:20,r:20,t:10,b:10},height:420},baseConfig);
+}
+function drawHeatmapEq(){
+  const p=EQUITY[period],b=EQUITY.base_2024[period],m=[
+    {n:'Trades',v25:p.turnover.trades,v24:b.trades},{n:'Volume (000s)',v25:p.turnover.volume,v24:b.volume},
+    {n:'Value (R 000s)',v25:p.turnover.value,v24:b.value},{n:'Reported Value (R 000s)',v25:p.reported.value,v24:0}
+  ].map(x=>({n:x.n,yoy:x.v24?((x.v25/x.v24-1)*100):0,idx:x.v24?x.v25/x.v24*100:100}));
+  const names=m.map(x=>x.n), yoy=m.map(x=>x.yoy), idx=m.map(x=>x.idx);
+  const rY=[...yoy].map((v,i)=>({i,v})).sort((a,b)=>b.v-a.v).reduce((a,c,i)=>{a[c.i]=i+1;return a;},{});
+  const rI=[...idx].map((v,i)=>({i,v})).sort((a,b)=>b.v-a.v).reduce((a,c,i)=>{a[c.i]=i+1;return a;},{});
+  const z=names.map((_,i)=>[rY[i],rI[i]]);
+  Plotly.newPlot('rankHeatmap_eq',[{type:'heatmap',z,x:['YoY % (rank)','Index 2025 (rank)'],y:names,colorscale:[[0,'#0ea5e9'],[1,'#fde68a']],reversescale:true,showscale:true}],
+    fixedAxes({margin:{l:220,r:20,t:20,b:40},height:520,xaxis:{side:'top'}}),baseConfig);
+}
+function drawPinsEq(){
+  const pins=[...pinsEq]; const p=EQUITY[period],b=EQUITY.base_2024[period];
+  const map= new Map([['Trades',{v25:p.turnover.trades,v24:b.trades}],['Volume (000s)',{v25:p.turnover.volume,v24:b.volume}],['Value (R 000s)',{v25:p.turnover.value,v24:b.value}]]);
+  pinChips_eq.innerHTML=pins.map(n=>`<span class="chip">${n}<button data-n="${n}" title="Unpin">×</button></span>`).join('')||'<span class="text-xs text-gray-500">No pins yet.</span>';
+  pinBody_eq.innerHTML=pins.map(n=>{const m=map.get(n); if(!m)return `<tr><td>${n}</td><td class="text-right">—</td><td class="text-right">—</td><td class="text-right">—</td></tr>`;
+    const yoy=(m.v24?((m.v25/m.v24-1)*100):0); return `<tr><td>${n}</td><td class="text-right">${m.v25.toLocaleString()}</td><td class="text-right">${m.v24.toLocaleString()}</td><td class="text-right ${yoy>=0?'text-green-600':'text-red-600'}">${yoy.toFixed(2)}%</td></tr>`;}).join('');
+  document.querySelectorAll('#pinChips_eq button[data-n]').forEach(b=>b.onclick=()=>{pinsEq.delete(b.dataset.n);drawPinsEq();});
+}
+function refreshEquity(){updateKPI();drawTurnover();drawEfficiency();drawLiquidity();drawYoYRank();drawForeign();drawReported();drawHeatmapEq();drawPinsEq();}
+
+// Equity controls
+wkBtn.onclick=()=>{wkBtn.classList.add('active');ytdBtn.classList.remove('active');period='weekly';refreshEquity();};
+ytdBtn.onclick=()=>{ytdBtn.classList.add('active');wkBtn.classList.remove('active');period='ytd';refreshEquity();};
+rawBtn.onclick=()=>{rawBtn.classList.add('active');stdBtn.classList.remove('active');stdMode='raw';turnStd.checked=false;refreshEquity();};
+stdBtn.onclick=()=>{stdBtn.classList.add('active');rawBtn.classList.remove('active');stdMode='std';turnStd.checked=false;refreshEquity();};
+turnStd.onchange=refreshEquity; topN_eq.oninput=()=>{topNLabel_eq.textContent=topN_eq.value;drawYoYRank();}; clearPins_eq.onclick=()=>{pinsEq.clear();drawPinsEq();};
+
+// Index charts
+let view='raw', selected=null, pinned=new Set();
+function unitFor(k){return (k==='yoy'||k==='range'||k==='downside')?'%':'';}
+function buildColors(names,vals){return vals.map((v,i)=> (v>=0?'#16A34A':'#EF4444'));}
+function median(a){const s=[...a].sort((x,y)=>x-y);const n=s.length;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2;}
+function metricFor(r,k){if(k==='yoy')return r.yoy;if(k==='range')return r.range;if(k==='downside')return r.downside;if(k==='sharpe')return r.sharpe;if(k==='close2025')return r.close25;if(k==='close2024')return r.close24;if(k==='index2025')return r.index25;if(k==='sharpe_norm')return r.sharpe_norm;return 0;}
+function ols2(x,y){const n=x.length,m=a=>a.reduce((s,v)=>s+v,0)/a.length,mx=m(x),my=m(y);let num=0,den=0;for(let i=0;i<n;i++){const dx=x[i]-mx,dy=y[i]-my;num+=dx*dy;den+=dx*dx}return {slope:den?num/den:0,intercept:my-(den?num/den:0)*mx};}
+
+function drawMain(){
+  const dec=+decimals.value, m=metricSelect.value, unit=unitFor(m);
+  if(scatterToggle.checked){
+    const pts=INDICES.map(r=>({n:r.name,x:r.range,y:r.yoy,c:r.yoy>=0?'#16A34A':'#EF4444'}));
+    const x=pts.map(p=>p.x),y=pts.map(p=>p.y),names=pts.map(p=>p.n),colors=pts.map(p=>p.c);
+    const {slope,intercept}=ols2(x,y); const xmin=Math.min(...x),xmax=Math.max(...x);
+    Plotly.newPlot('mainChart',
+      [{type:'scatter',mode:'markers+text',x,y,text:names,textposition:'top center',marker:{size:10,color:colors},hovertemplate:'%{text}<br>Range %{x:.'+dec+'f}%<br>YoY %{y:.'+dec+'f}%<extra></extra>'},
+       {type:'scatter',mode:'lines',x:[xmin,xmax],y:[intercept+slope*xmin,intercept+slope*xmax],line:{dash:'dash',color:'#9CA3AF'}}],
+      fixedAxes({margin:{l:60,r:10,t:20,b:60},height:420,xaxis:{title:'Range %'},yaxis:{title:'YoY %'}}),baseConfig);
+  }else{
+    let arr=INDICES.map(r=>({n:r.name,v:metricFor(r,m)}));
+    if(sortSelect.value!=='none') arr.sort((a,b)=>sortSelect.value==='asc'?a.v-b.v:b.v-a.v);
+    const labels=arr.map(d=>d.n), vals=arr.map(d=>d.v), colors=buildColors(labels, (m==='yoy'||m==='downside')?vals:vals.map(()=>1));
+    const trace=chartTypeSelect.value==='bar'
+      ? {type:'bar',x:labels,y:vals,marker:{color:(m==='yoy'||m==='downside')?colors:'#111827'},hovertemplate:'%{x}<br>%{y:.'+dec+'f}'+(unit==='%'?'%':'')+'<extra></extra>'}
+      : {type:'scatter',mode:'lines+markers',x:labels,y:vals,hovertemplate:'%{x}<br>%{y:.'+dec+'f}'+(unit==='%'?'%':'')+'<extra></extra>'};
+    Plotly.newPlot('mainChart',[trace],fixedAxes({margin:{l:50,r:10,t:20,b:70},height:420,yaxis:{title:metricSelect.options[metricSelect.selectedIndex].text}}),baseConfig);
+  }
+}
+function drawSharpe(){
+  const dec=+decimals.value, key=(view==='raw')?'sharpe':'sharpe_norm';
+  let data=INDICES.map(r=>({n:r.name,v:r[key],y:r.yoy,rg:r.range,s:r.sharpe})).sort((a,b)=>b.v-a.v).slice(0,+topN.value);
+  const cols=data.map(d=> '#6366F1');
+  Plotly.newPlot('sharpeChart',[{type:'bar',x:data.map(d=>d.v),y:data.map(d=>d.n),orientation:'h',marker:{color:cols},
+    hovertemplate:'%{y}<br>'+(view==='raw'?'Sharpe %{x:.2f}':'Sharpe (0–100) %{x:.2f}')+'<br>YoY %{customdata[0]:.'+dec+'f}% / Range %{customdata[1]:.'+dec+'f}%<extra></extra>',
+    customdata:data.map(d=>[d.y,d.rg])}],
+    fixedAxes({margin:{l:180,r:20,t:20,b:40},height:480,xaxis:{title:(view==='raw'?'Sharpe Proxy':'Sharpe Normalized (0–100)')}}),baseConfig);
+}
+function drawPins(){
+  const pins=[...pinned]; const ranks=INDICES.slice().sort((a,b)=>b.sharpe-a.sharpe).map((r,i)=>({n:r.name,rank:i+1}));
+  const rmap=Object.fromEntries(ranks.map(x=>[x.n,x.rank]));
+  pinChips.innerHTML=pins.map(n=>`<span class="chip">${n}<button data-n="${n}" title="Unpin">×</button></span>`).join('')||'<span class="text-xs text-gray-500">No pins yet.</span>';
+  pinBody.innerHTML=pins.map(n=>{const r=INDICES.find(x=>x.name===n);const c=r.yoy>=0?'text-green-600':'text-red-600';
+    return `<tr><td>${r.name}</td><td class="text-right ${c}">${r.yoy.toFixed(2)}%</td><td class="text-right">${r.range.toFixed(2)}%</td><td class="text-right">${r.sharpe.toFixed(2)}</td><td class="text-right">#${rmap[r.name]}</td></tr>`;}).join('');
+  document.querySelectorAll('#pinChips button[data-n]').forEach(b=>b.onclick=()=>{pinned.delete(b.dataset.n);drawPins();});
+}
+function drawHeatmap(){
+  const metrics=['YoY %','Range %','Downside %','Sharpe'], by={'YoY %':(a,b)=>b.yoy-a.yoy,'Range %':(a,b)=>a.range-b.range,'Downside %':(a,b)=>a.downside-b.downside,'Sharpe':(a,b)=>b.sharpe-a.sharpe};
+  const names=INDICES.map(r=>r.name), rank={}; metrics.forEach(m=>{INDICES.slice().sort(by[m]).forEach((r,i)=>{(rank[r.name]??={})[m]=i+1;});});
+  const z=names.map(n=>metrics.map(m=>rank[n][m]));
+  Plotly.newPlot('rankHeatmap',[{type:'heatmap',z,x:metrics,y:names,colorscale:[[0,'#0ea5e9'],[1,'#fde68a']],reversescale:true,showscale:true}],
+    fixedAxes({margin:{l:180,r:20,t:20,b:40},height:520,xaxis:{side:'top'}}),baseConfig);
+}
+function refreshIndex(){drawMain();drawSharpe();drawPins();drawHeatmap();}
+
+// Index controls
+decimals.oninput=()=>{decLabel.textContent=decimals.value;refreshIndex();};
+metricSelect.onchange=refreshIndex; chartTypeSelect.onchange=refreshIndex; sortSelect.onchange=refreshIndex;
+scatterToggle.onchange=refreshIndex; capSharpeToggle.onchange=refreshIndex;
+topN.oninput=()=>{topNLabel.textContent=topN.value;drawSharpe();}; clearPins.onclick=()=>{pinned.clear();drawPins();};
+
+// Click to pin from main/sharpe charts
+document.getElementById('mainChart').addEventListener('plotly_click',e=>{const p=e.detail?.points?.[0]; if(!p)return; const label=p.text||p.x; if(!label)return; if(pinned.has(label))pinned.delete(label); else pinned.add(label); drawPins();});
+document.getElementById('sharpeChart').addEventListener('plotly_click',e=>{const p=e.detail?.points?.[0]; if(!p)return; const label=p.y; if(!label)return; if(pinned.has(label))pinned.delete(label); else pinned.add(label); drawPins();});
+
+// Initial render (sections remain hidden)
+refreshEquity();
+refreshIndex();
+</script>
+</body>
+</html>
